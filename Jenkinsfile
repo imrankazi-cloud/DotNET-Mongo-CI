@@ -1,32 +1,38 @@
 pipeline {
     agent any
     
-    environment {
+     environment {
         SCANNER_HOME = tool 'sonar-scanner'
         IMAGE_TAG = "v${BUILD_NUMBER}"
     }
+
     stages {
-        stage('Git Checkout') {
+        stage('Git CheckOut') {
             steps {
-                git branch: 'main', credentialsId: 'git-token', url: 'https://github.com/jaiswaladi246/Capstone-DotNET-Mongo-CI.git'
+                git branch: 'main', credentialsId: 'git-token', url: 'https://github.com/imrankazi-cloud/DotNET-Mongo-CI.git'
             }
         }
-        stage('Gitleaks Scan') {
+        
+        stage('Gitleak Scan') {
             steps {
-             sh 'gitleaks detect --report-format=json --report-path=gitleaks-report.json --exit-code=1'
+                sh 'gitleaks detect --report-format=json --report-path=gitleaks-report.json --exit-code=1'
             }
         }
-        stage('Compile') {
+        
+        stage('DotNet Build') {
             steps {
                 sh 'dotnet build'
             }
         }
-        stage('trivy FS Scan') {
+        
+        
+        stage('Trivy FS Scan') {
             steps {
-              sh 'trivy fs --format table -o trivy-fs-report.html .'
+                sh 'trivy fs --format table -o trivy-fs-report.html .'
             }
         }
-        stage('Unit Testing') {
+        
+        stage('Unit Test') {
             steps {
                 echo 'dotnet test'
             }
@@ -38,54 +44,57 @@ pipeline {
                     sh ''' $SCANNER_HOME/bin/sonar-scanner -Dsonar.projectName=NoteApp \
                             -Dsonar.projectKey=NoteApp '''
                 }
+                
             }
         }
         
-        stage('Quality Gate Check') {
+        stage('QualityGate Check') {
             steps {
                 timeout(time: 1, unit: 'HOURS') {
-                     waitForQualityGate abortPipeline: false, credentialsId: 'sonar-token'
-                    }
+                   waitForQualityGate abortPipeline: false, credentialsId: 'sonar-token'
+                }
             }
         }
         
-        stage('Build Image & Tag Image') {
+        stage('Docker Build') {
             steps {
-                script {
+                script{
                     withDockerRegistry(credentialsId: 'docker-cred') {
-                        sh "docker build -t adijaiswal/noteapp:$IMAGE_TAG ."
+                       sh 'docker build -t imranawsdevops/noteapp:$IMAGE_TAG .'
                     }
                 }
             }
         }
         
-        stage('trivy Image Scan') {
+         stage('Trivy Image Scan') {
             steps {
-              sh 'trivy image --format table -o trivy-image-report.html adijaiswal/noteapp:$IMAGE_TAG'
+                sh 'trivy image --format table -o trivy-image-report.html imranawsdevops/noteapp:$IMAGE_TAG'
             }
         }
         
-        stage('Push Image') {
+        stage('Docker Push') {
             steps {
-                script {
+                script{
                     withDockerRegistry(credentialsId: 'docker-cred') {
-                        sh "docker push adijaiswal/noteapp:$IMAGE_TAG"
+                       sh 'docker push imranawsdevops/noteapp:$IMAGE_TAG'
                     }
                 }
             }
         }
+        
+        
         stage('Update Manifest File CD Repo') {
             steps {
                 script {
                     cleanWs()
                     withCredentials([usernamePassword(credentialsId: 'git-token', passwordVariable: 'GIT_PASSWORD', usernameVariable: 'GIT_USERNAME')]) {
-                        sh '''
+                         sh '''
                             # Clone the CD Repo
-                            git clone https://${GIT_USERNAME}:${GIT_PASSWORD}@github.com/jaiswaladi246/Capstone-DotNET-Mongo-CD.git
+                            git clone https://${GIT_USERNAME}:${GIT_PASSWORD}@github.com/imrankazi-cloud/DotNET-Mongo-CD.git
                             
                             # Update the tag in manifest
-                            cd Capstone-DotNET-Mongo-CD
-                            sed -i "s|adijaiswal/noteapp:.*|adijaiswal/noteapp:${IMAGE_TAG}|" Manifest/manifest.yaml
+                            cd DotNET-Mongo-CD
+                            sed -i "s|imranawsdevops/noteapp:.*|imranawsdevops/noteapp:${IMAGE_TAG}|" Manifest/manifest.yaml
                             
                             # Confirm Changes
                             echo "Updated manifest file contents:"
@@ -98,13 +107,12 @@ pipeline {
                             git commit -m "Update image tag to ${IMAGE_TAG}"
                             git push origin main
                         '''
-                    }
-                    
-                }
+            }
             }
         }
     }
-    post {
+}
+post {
     always {
         script {
             def jobName = env.JOB_NAME
@@ -129,7 +137,7 @@ pipeline {
             emailext (
                 subject: "${jobName} - Build ${buildNumber} - ${pipelineStatus.toUpperCase()}",
                 body: body,
-                to: '567adddi.jais@gmail.com',
+                to: 'imranarkaws@gmail.com',
                 from: 'jaiswaladi246@gmail.com',
                 replyTo: 'jenkins@devopsshack.com',
                 mimeType: 'text/html',
